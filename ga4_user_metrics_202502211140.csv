@@ -1,0 +1,5 @@
+"report_date","active_users","new_users","total_users","user_engagement_duration","user_key_event_rate","active_1day_users","active_7day_users","active_28day_users","dau_per_wau","dau_per_mau","wau_per_mau","first_time_purchasers","first_time_purchaser_rate","total_purchasers","first_time_purchasers_per_new_user","new_vs_returning"
+2025-02-21,88,100,104,4625,0.13636363636363635,88,1483,10543,0.05933917734322319,0.007859248012860587,1.0,0,0.0,0,0.0,new
+2025-02-21,37,0,49,3302,0.2972972972972973,37,193,1319,0.19170984455958548,0.026353276353276354,0.25149700598802394,0,0.0,0,0.0,returning
+2025-02-21,30,0,33,1000,0.2,30,30,30,1.0,1.0,0.13746438746438747,0,0.0,0,0.0,""
+2025-02-21,0,0,0,0,0.0,0,42,158,0.0,0.0,0.13244619094400287,0,0.0,0,0.0,(not set)
