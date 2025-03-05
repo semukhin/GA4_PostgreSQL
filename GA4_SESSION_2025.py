@@ -102,6 +102,7 @@ def fetch_session_data():
     ]
 
     results = []
+    data_dict = {}  # Словарь для дедупликации данных
     current_date = datetime.strptime(START_DATE, "%Y-%m-%d")
     end_date = datetime.strptime(END_DATE, "%Y-%m-%d")
 
@@ -112,27 +113,7 @@ def fetch_session_data():
         # Запрос первой группы метрик
         rows_group1 = fetch_ga4_session_metrics(date_str, dimensions, metrics_group1)
         
-        # Запрос второй группы метрик
-        rows_group2 = fetch_ga4_session_metrics(date_str, dimensions, metrics_group2)
-        
-        # Создадим словарь для хранения данных второй группы метрик
-        scrolled_users_data = {}
-        
-        for row in rows_group2:
-            # Создадим ключ на основе измерений
-            key = (
-                row.dimension_values[0].value,  # deviceCategory
-                row.dimension_values[1].value,  # country
-                row.dimension_values[2].value,  # browser
-                row.dimension_values[3].value,  # sessionSource
-                row.dimension_values[4].value,  # sessionMedium
-                row.dimension_values[5].value,  # sessionCampaignName
-                row.dimension_values[6].value,  # landingPage
-            )
-            
-            # Сохраним значение scrolledUsers
-            scrolled_users_data[key] = int(row.metric_values[0].value or 0)
-
+        # Обработка первой группы метрик и сохранение в словарь
         for row in rows_group1:
             device_category = row.dimension_values[0].value
             country = row.dimension_values[1].value
@@ -142,42 +123,100 @@ def fetch_session_data():
             session_campaign_name = row.dimension_values[5].value
             landing_page = row.dimension_values[6].value
             
-            # Ищем соответствующее значение scrolledUsers из второй группы
-            key = (
-                device_category,
-                country,
-                browser,
-                session_source,
-                session_medium,
-                session_campaign_name,
-                landing_page
-            )
+            # Создаем ключ на основе полей первичного ключа
+            key = (date_str, device_category, country, session_source, session_medium)
             
-            scrolled_users = scrolled_users_data.get(key, 0)
+            # Сохраняем данные в словарь
+            data_dict[key] = {
+                'report_date': date_str,
+                'sessions': int(row.metric_values[0].value or 0),
+                'sessions_per_user': float(row.metric_values[1].value or 0.0),
+                'bounce_rate': float(row.metric_values[2].value or 0.0),
+                'engaged_sessions': int(row.metric_values[3].value or 0),
+                'engagement_rate': float(row.metric_values[4].value or 0.0),
+                'avg_session_duration': float(row.metric_values[5].value or 0.0),
+                'session_key_event_rate': float(row.metric_values[6].value or 0.0),
+                'events_per_session': float(row.metric_values[7].value or 0.0),
+                'screen_page_views': int(row.metric_values[8].value or 0),
+                'screen_page_views_per_session': float(row.metric_values[9].value or 0.0),
+                'scrolled_users': 0,  # Инициализируем нулём, обновим из второго запроса
+                'session_source': session_source,
+                'session_medium': session_medium,
+                'session_campaign_name': session_campaign_name,
+                'landing_page': landing_page,
+                'device_category': device_category,
+                'country': country,
+                'browser': browser
+            }
+        
+        # Запрос второй группы метрик
+        rows_group2 = fetch_ga4_session_metrics(date_str, dimensions, metrics_group2)
+        
+        # Обновляем значения для scrolledUsers из второго запроса
+        for row in rows_group2:
+            device_category = row.dimension_values[0].value
+            country = row.dimension_values[1].value
+            browser = row.dimension_values[2].value
+            session_source = row.dimension_values[3].value
+            session_medium = row.dimension_values[4].value
+            session_campaign_name = row.dimension_values[5].value
+            landing_page = row.dimension_values[6].value
             
-            results.append((
-                date_str,
-                int(row.metric_values[0].value or 0),      # sessions
-                float(row.metric_values[1].value or 0.0),  # sessionsPerUser
-                float(row.metric_values[2].value or 0.0),  # bounceRate
-                int(row.metric_values[3].value or 0),      # engagedSessions
-                float(row.metric_values[4].value or 0.0),  # engagementRate
-                float(row.metric_values[5].value or 0.0),  # averageSessionDuration
-                float(row.metric_values[6].value or 0.0),  # sessionKeyEventRate
-                float(row.metric_values[7].value or 0.0),  # eventsPerSession
-                int(row.metric_values[8].value or 0),      # screenPageViews
-                float(row.metric_values[9].value or 0.0),  # screenPageViewsPerSession
-                scrolled_users,                            # scrolledUsers из второго запроса
-                session_source,
-                session_medium,
-                session_campaign_name,
-                landing_page,
-                device_category,
-                country,
-                browser
-            ))
+            # Создаем ключ для поиска в словаре
+            key = (date_str, device_category, country, session_source, session_medium)
+            
+            # Если ключ уже существует, обновляем значение scrolledUsers
+            if key in data_dict:
+                data_dict[key]['scrolled_users'] = int(row.metric_values[0].value or 0)
+            # Если ключа нет (что маловероятно, но всё же), создаем новую запись
+            else:
+                data_dict[key] = {
+                    'report_date': date_str,
+                    'sessions': 0,
+                    'sessions_per_user': 0.0,
+                    'bounce_rate': 0.0,
+                    'engaged_sessions': 0,
+                    'engagement_rate': 0.0,
+                    'avg_session_duration': 0.0,
+                    'session_key_event_rate': 0.0,
+                    'events_per_session': 0.0,
+                    'screen_page_views': 0,
+                    'screen_page_views_per_session': 0.0,
+                    'scrolled_users': int(row.metric_values[0].value or 0),
+                    'session_source': session_source,
+                    'session_medium': session_medium,
+                    'session_campaign_name': session_campaign_name,
+                    'landing_page': landing_page,
+                    'device_category': device_category,
+                    'country': country,
+                    'browser': browser
+                }
 
         current_date += timedelta(days=1)
+    
+    # Преобразуем словарь в список кортежей для вставки в базу данных
+    for data in data_dict.values():
+        results.append((
+            data['report_date'],
+            data['sessions'],
+            data['sessions_per_user'],
+            data['bounce_rate'],
+            data['engaged_sessions'],
+            data['engagement_rate'],
+            data['avg_session_duration'],
+            data['session_key_event_rate'],
+            data['events_per_session'],
+            data['screen_page_views'],
+            data['screen_page_views_per_session'],
+            data['scrolled_users'],
+            data['session_source'],
+            data['session_medium'],
+            data['session_campaign_name'],
+            data['landing_page'],
+            data['device_category'],
+            data['country'],
+            data['browser']
+        ))
 
     return results
 

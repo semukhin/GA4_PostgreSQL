@@ -178,46 +178,67 @@ def load_data_to_postgres():
         print("Нет данных для загрузки.")
         return
 
-    insert_query = """
-    INSERT INTO staging.ga4_user_metrics (
-        report_date, active_users, new_users, total_users, user_engagement_duration, user_key_event_rate, 
-        active_1day_users, active_7day_users, active_28day_users, dau_per_wau, dau_per_mau, wau_per_mau, 
-        first_time_purchasers, first_time_purchaser_rate, total_purchasers, first_time_purchasers_per_new_user,
-        purchaser_rate, average_revenue_per_user, average_purchase_revenue, average_purchase_revenue_per_user,
-        device_category, platform, browser, operating_system, country, new_vs_returning
-    ) VALUES %s 
-    ON CONFLICT (report_date, device_category, country, new_vs_returning) DO UPDATE SET
-        active_users = EXCLUDED.active_users,
-        new_users = EXCLUDED.new_users,
-        total_users = EXCLUDED.total_users,
-        user_engagement_duration = EXCLUDED.user_engagement_duration,
-        user_key_event_rate = EXCLUDED.user_key_event_rate,
-        active_1day_users = EXCLUDED.active_1day_users,
-        active_7day_users = EXCLUDED.active_7day_users,
-        active_28day_users = EXCLUDED.active_28day_users,
-        dau_per_wau = EXCLUDED.dau_per_wau,
-        dau_per_mau = EXCLUDED.dau_per_mau,
-        wau_per_mau = EXCLUDED.wau_per_mau,
-        first_time_purchasers = EXCLUDED.first_time_purchasers,
-        first_time_purchaser_rate = EXCLUDED.first_time_purchaser_rate,
-        total_purchasers = EXCLUDED.total_purchasers,
-        first_time_purchasers_per_new_user = EXCLUDED.first_time_purchasers_per_new_user,
-        purchaser_rate = EXCLUDED.purchaser_rate,
-        average_revenue_per_user = EXCLUDED.average_revenue_per_user,
-        average_purchase_revenue = EXCLUDED.average_purchase_revenue,
-        average_purchase_revenue_per_user = EXCLUDED.average_purchase_revenue_per_user,
-        platform = EXCLUDED.platform,
-        browser = EXCLUDED.browser,
-        operating_system = EXCLUDED.operating_system;
-    """
+    # Удаление дубликатов из данных перед вставкой
+    # Создаем словарь, где ключом является комбинация полей первичного ключа
+    unique_data = {}
+    for row in data:
+        # Ключ: (report_date, device_category, country, new_vs_returning)
+        key = (row[0], row[20], row[24], row[25])
+        # Если есть дубликаты, берем только последнюю запись
+        unique_data[key] = row
 
-    conn = psycopg2.connect(**POSTGRES_CONFIG)
-    cur = conn.cursor()
+    # Преобразуем обратно в список
+    deduplicated_data = list(unique_data.values())
+    
+    print(f"Всего строк: {len(data)}, после удаления дубликатов: {len(deduplicated_data)}")
 
-    psycopg2.extras.execute_values(cur, insert_query, data)
-    conn.commit()
-    cur.close()
-    conn.close()
+    # Разбиваем данные на пакеты по 1000 записей, чтобы избежать переполнения
+    batch_size = 1000
+    for i in range(0, len(deduplicated_data), batch_size):
+        batch = deduplicated_data[i:i+batch_size]
+        
+        insert_query = """
+        INSERT INTO staging.ga4_user_metrics (
+            report_date, active_users, new_users, total_users, user_engagement_duration, user_key_event_rate, 
+            active_1day_users, active_7day_users, active_28day_users, dau_per_wau, dau_per_mau, wau_per_mau, 
+            first_time_purchasers, first_time_purchaser_rate, total_purchasers, first_time_purchasers_per_new_user,
+            purchaser_rate, average_revenue_per_user, average_purchase_revenue, average_purchase_revenue_per_user,
+            device_category, platform, browser, operating_system, country, new_vs_returning
+        ) VALUES %s 
+        ON CONFLICT (report_date, device_category, country, new_vs_returning) DO UPDATE SET
+            active_users = EXCLUDED.active_users,
+            new_users = EXCLUDED.new_users,
+            total_users = EXCLUDED.total_users,
+            user_engagement_duration = EXCLUDED.user_engagement_duration,
+            user_key_event_rate = EXCLUDED.user_key_event_rate,
+            active_1day_users = EXCLUDED.active_1day_users,
+            active_7day_users = EXCLUDED.active_7day_users,
+            active_28day_users = EXCLUDED.active_28day_users,
+            dau_per_wau = EXCLUDED.dau_per_wau,
+            dau_per_mau = EXCLUDED.dau_per_mau,
+            wau_per_mau = EXCLUDED.wau_per_mau,
+            first_time_purchasers = EXCLUDED.first_time_purchasers,
+            first_time_purchaser_rate = EXCLUDED.first_time_purchaser_rate,
+            total_purchasers = EXCLUDED.total_purchasers,
+            first_time_purchasers_per_new_user = EXCLUDED.first_time_purchasers_per_new_user,
+            purchaser_rate = EXCLUDED.purchaser_rate,
+            average_revenue_per_user = EXCLUDED.average_revenue_per_user,
+            average_purchase_revenue = EXCLUDED.average_purchase_revenue,
+            average_purchase_revenue_per_user = EXCLUDED.average_purchase_revenue_per_user,
+            platform = EXCLUDED.platform,
+            browser = EXCLUDED.browser,
+            operating_system = EXCLUDED.operating_system;
+        """
+
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cur = conn.cursor()
+
+        psycopg2.extras.execute_values(cur, insert_query, batch)
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        print(f"Загружен пакет {i//batch_size + 1}, записей: {len(batch)}")
 
 # Создаем DAG
 with DAG(

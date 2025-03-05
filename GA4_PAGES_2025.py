@@ -158,33 +158,52 @@ def load_data_to_postgres():
         print("Нет данных о страницах для загрузки.")
         return
 
-    insert_query = """
-    INSERT INTO staging.ga4_pages_metrics (
-        report_date, page_path, page_title, screen_page_views, average_engagement_time,
-        engaged_sessions, engagement_rate, entrances, bounce_rate, exits, exit_rate,
-        device_category, country, session_source, session_medium
-    ) VALUES %s 
-    ON CONFLICT (report_date, page_path, device_category, country) DO UPDATE SET
-        page_title = EXCLUDED.page_title,
-        screen_page_views = EXCLUDED.screen_page_views,
-        average_engagement_time = EXCLUDED.average_engagement_time,
-        engaged_sessions = EXCLUDED.engaged_sessions,
-        engagement_rate = EXCLUDED.engagement_rate,
-        entrances = EXCLUDED.entrances,
-        bounce_rate = EXCLUDED.bounce_rate,
-        exits = EXCLUDED.exits,
-        exit_rate = EXCLUDED.exit_rate,
-        session_source = EXCLUDED.session_source,
-        session_medium = EXCLUDED.session_medium;
-    """
-
-    conn = psycopg2.connect(**POSTGRES_CONFIG)
-    cur = conn.cursor()
-
-    psycopg2.extras.execute_values(cur, insert_query, data)
-    conn.commit()
-    cur.close()
-    conn.close()
+    # Удаляем дубликаты по ключу (report_date, page_path, device_category, country)
+    unique_data = {}
+    for row in data:
+        # Создаем ключ на основе полей первичного ключа (позиции 0, 1, 11, 12)
+        key = (row[0], row[1], row[11], row[12])
+        # Сохраняем только последнюю запись для каждого ключа
+        unique_data[key] = row
+    
+    # Преобразуем обратно в список
+    deduplicated_data = list(unique_data.values())
+    
+    print(f"Всего строк: {len(data)}, уникальных строк: {len(deduplicated_data)}")
+    
+    # Вставка данных группами по 1000 строк для уменьшения нагрузки
+    batch_size = 1000
+    for i in range(0, len(deduplicated_data), batch_size):
+        batch = deduplicated_data[i:i+batch_size]
+        
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cur = conn.cursor()
+        
+        insert_query = """
+        INSERT INTO staging.ga4_pages_metrics (
+            report_date, page_path, page_title, screen_page_views, average_engagement_time,
+            engaged_sessions, engagement_rate, entrances, bounce_rate, exits, exit_rate,
+            device_category, country, session_source, session_medium
+        ) VALUES %s 
+        ON CONFLICT (report_date, page_path, device_category, country) DO UPDATE SET
+            page_title = EXCLUDED.page_title,
+            screen_page_views = EXCLUDED.screen_page_views,
+            average_engagement_time = EXCLUDED.average_engagement_time,
+            engaged_sessions = EXCLUDED.engaged_sessions,
+            engagement_rate = EXCLUDED.engagement_rate,
+            entrances = EXCLUDED.entrances,
+            bounce_rate = EXCLUDED.bounce_rate,
+            exits = EXCLUDED.exits,
+            exit_rate = EXCLUDED.exit_rate,
+            session_source = EXCLUDED.session_source,
+            session_medium = EXCLUDED.session_medium;
+        """
+        
+        psycopg2.extras.execute_values(cur, insert_query, batch)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"Загружено {len(batch)} строк (группа {i//batch_size + 1}/{(len(deduplicated_data)-1)//batch_size + 1})")
 
 # Создаем DAG
 with DAG(
