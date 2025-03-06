@@ -157,7 +157,7 @@ def create_tables():
             cursor.close()
         if conn:
             conn.close()
-
+            
 def test_ga4_connection():
     """Проверка соединения с API GA4."""
     try:
@@ -165,10 +165,7 @@ def test_ga4_connection():
         request = RunReportRequest(
             property=PROPERTY_ID,
             date_ranges=[DateRange(start_date=START_DATE, end_date=END_DATE)],
-            # Исправляем метрики - 'impressions' не валидна, используем правильные метрики для GA4
-            metrics=[Metric(name="sessions"), Metric(name="activeUsers"), Metric(name="totalRevenue")],
-            dimensions=[Dimension(name="sessionSource"), Dimension(name="sessionMedium")],
-            limit=10
+            metrics=[Metric(name="activeUsers")]
         )
         response = client.run_report(request)
         
@@ -181,8 +178,7 @@ def test_ga4_connection():
     except Exception as e:
         logger.error(f"Ошибка при подключении к GA4: {e}")
         logger.error(traceback.format_exc())
-        # Поднимаем исключение, чтобы задача завершилась с ошибкой
-        raise
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 def fetch_google_ads_metrics():
     """Получение метрик Google Ads из GA4."""
@@ -226,8 +222,8 @@ def fetch_google_ads_metrics():
     metrics = [
         "sessions",              # Вместо advertiserAdImpressions
         "engagementRate",        # Вместо advertiserAdClicks
-        "totalAdRevenue",        # Вместо advertiserAdCost
-        "screenPageViewsPerSession", # Вместо advertiserAdCostPerClick
+        "totalAdRevenue",        # 
+        "screenPageViewsPerSession", 
         "conversions"             # Конверсии
     ]
     
@@ -307,11 +303,11 @@ def process_response(response, results, network_type_filter="all"):
             campaign_name = f"{campaign_name} ({network_type_filter})"
         
         # Метрики
-        impressions = int(row.metric_values[0].value or 0)
-        clicks = int(row.metric_values[1].value or 0)
+        impressions = int(float(row.metric_values[0].value or 0))
+        clicks = int(float(row.metric_values[1].value or 0))
         cost = float(row.metric_values[2].value or 0.0)
         cpc = float(row.metric_values[3].value or 0.0)
-        conversions = int(row.metric_values[4].value or 0)
+        conversions = int(float(row.metric_values[4].value or 0))
         
         # Расчёт CTR (Click-Through Rate)
         ctr = 0.0
@@ -364,7 +360,7 @@ def fetch_conversion_metrics():
         metrics = [
             "eventCount",
             "conversions",
-            "advertiserAdCost",
+            "totalAdRevenue",
             "purchaseRevenue"  # Доход от покупок
         ]
         
@@ -459,7 +455,7 @@ def fetch_campaign_budget_metrics():
     
     # Метрики для бюджетов
     metrics = [
-        "advertiserAdCost"  # Затраты на рекламу
+        "totalAdRevenue"  # Затраты на рекламу
     ]
     
     try:
@@ -1032,6 +1028,20 @@ def calculate_conversion_metrics():
         conn = psycopg2.connect(**POSTGRES_CONFIG)
         cursor = conn.cursor()
         
+        # Проверяем существование таблицы перед запросом
+        cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'staging' 
+            AND table_name = 'ga4_key_event_metrics'
+        )
+        """)
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            logger.error("Таблица staging.ga4_key_event_metrics не существует. Невозможно рассчитать метрики конверсии.")
+            raise ValueError("Таблица с ключевыми событиями не существует")
+        
         # Запрос для сбора данных о кликах и расходах по кампаниям
         cursor.execute("""
         SELECT 
@@ -1253,7 +1263,7 @@ with DAG(
     'GA4_ADVERTISING_METRICS',
     default_args=default_args,
     description='Импорт расширенных метрик рекламы и бюджетов из GA4',
-    schedule_interval='0 5 * * *',  # Каждый день в 05:00
+    schedule_interval='30 5 * * *',  
     start_date=datetime(2025, 3, 5),
     catchup=False,
     tags=['ga4', 'advertising', 'google-ads'],
@@ -1272,6 +1282,16 @@ with DAG(
         python_callable=create_tables,
         # Добавляем проверку результата выполнения
         trigger_rule='all_success',
+    )
+
+    wait_for_user_behavior = ExternalTaskSensor(
+        task_id='wait_for_user_behavior',
+        external_dag_id='GA4_USER_BEHAVIOR',
+        external_task_id='load_key_event_metrics',
+        allowed_states=['success'],
+        timeout=3600,
+        poke_interval=60,
+        mode='reschedule'
     )
     
     load_google_ads_metrics = PythonOperator(
@@ -1304,5 +1324,6 @@ with DAG(
     
     # Определение порядка выполнения задач
     test_connection >> create_db_tables
-    create_db_tables >> [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics]
+    create_db_tables >> wait_for_user_behavior
+    wait_for_user_behavior >> [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics]
     [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics] >> load_wow_metrics

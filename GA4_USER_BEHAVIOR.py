@@ -113,20 +113,20 @@ def test_ga4_connection():
         request = RunReportRequest(
             property=PROPERTY_ID,
             date_ranges=[DateRange(start_date=START_DATE, end_date=END_DATE)],
-            metrics=[Metric(name="eventCount")]
+            metrics=[Metric(name="activeUsers")]
         )
         response = client.run_report(request)
         
         if not response.rows:
             logger.error("API GA4 вернул пустой результат. Нет данных для указанного периода.")
-            return False
+            raise ValueError("API GA4 вернул пустой результат")
         
-        logger.info(f"Соединение с GA4 успешно установлено. Найдено {response.rows[0].metric_values[0].value} событий.")
+        logger.info(f"Соединение с GA4 успешно установлено.")
         return True
     except Exception as e:
         logger.error(f"Ошибка при подключении к GA4: {e}")
         logger.error(traceback.format_exc())
-        return False
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 def fetch_event_metrics():
     """Получение метрик событий из GA4."""
@@ -189,12 +189,17 @@ def fetch_event_metrics():
             
             current_date += timedelta(days=1)
             
+        if not results:
+            logger.error("Не удалось получить данные метрик событий")
+            raise ValueError("Пустой результат при получении метрик событий")
+            
         logger.info(f"Получено {len(results)} записей метрик событий")
         return results
     except Exception as e:
         logger.error(f"Ошибка при получении метрик событий: {e}")
         logger.error(traceback.format_exc())
-        return []
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
+
 
 def fetch_key_event_metrics():
     """Получение метрик ключевых событий из GA4."""
@@ -519,26 +524,31 @@ with DAG(
     test_connection = PythonOperator(
         task_id='test_ga4_connection',
         python_callable=test_ga4_connection,
+        trigger_rule='all_success',
     )
     
     create_db_tables = PythonOperator(
         task_id='create_db_tables',
         python_callable=create_tables,
+        trigger_rule='all_success',
     )
     
     load_event_metrics = PythonOperator(
         task_id='load_event_metrics',
         python_callable=load_event_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_key_event_metrics = PythonOperator(
         task_id='load_key_event_metrics',
         python_callable=load_key_event_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_page_path_metrics = PythonOperator(
         task_id='load_page_path_metrics',
         python_callable=load_page_path_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     # Определение порядка выполнения задач

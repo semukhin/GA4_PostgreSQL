@@ -115,21 +115,20 @@ def test_ga4_connection():
         request = RunReportRequest(
             property=PROPERTY_ID,
             date_ranges=[DateRange(start_date=START_DATE, end_date=END_DATE)],
-            metrics=[Metric(name="sessions")],
-            dimensions=[Dimension(name="sessionDefaultChannelGroup")]
+            metrics=[Metric(name="activeUsers")]
         )
         response = client.run_report(request)
         
         if not response.rows:
             logger.error("API GA4 вернул пустой результат. Нет данных для указанного периода.")
-            return False
+            raise ValueError("API GA4 вернул пустой результат")
         
         logger.info(f"Соединение с GA4 успешно установлено.")
         return True
     except Exception as e:
         logger.error(f"Ошибка при подключении к GA4: {e}")
         logger.error(traceback.format_exc())
-        return False
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 def fetch_channel_metrics():
     """Получение метрик по каналам из GA4."""
@@ -603,21 +602,28 @@ with DAG(
     create_db_tables = PythonOperator(
         task_id='create_db_tables',
         python_callable=create_tables,
+        trigger_rule='all_success',
+
     )
     
     load_channel_metrics = PythonOperator(
         task_id='load_channel_metrics',
         python_callable=load_channel_metrics_to_db,
+        trigger_rule='all_success',
+
     )
     
     load_source_medium_metrics = PythonOperator(
         task_id='load_source_medium_metrics',
         python_callable=load_source_medium_metrics_to_db,
+        trigger_rule='all_success',
+
     )
     
     load_campaign_metrics = PythonOperator(
         task_id='load_campaign_metrics',
         python_callable=load_campaign_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     # Определение порядка выполнения задач

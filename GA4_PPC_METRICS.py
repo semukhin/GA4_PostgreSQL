@@ -325,19 +325,24 @@ with DAG(
         allowed_states=['success'],
         timeout=3600,
         poke_interval=60,
-        mode='reschedule'
-    )
+        mode='reschedule',
+        trigger_rule='all_success',
+)
     
     # Создание таблицы для агрегированных метрик PPC
     create_table = PythonOperator(
         task_id='create_ppc_metrics_table',
         python_callable=create_ppc_metrics_table,
+        trigger_rule='all_success',
+
     )
     
     # Агрегация всех метрик PPC в единую таблицу
     aggregate_metrics = PythonOperator(
         task_id='aggregate_ppc_metrics',
         python_callable=aggregate_ppc_metrics,
+        trigger_rule='all_success', 
+
     )
     
     # Определение порядка выполнения задач

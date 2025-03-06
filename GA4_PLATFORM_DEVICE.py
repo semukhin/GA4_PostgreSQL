@@ -112,21 +112,20 @@ def test_ga4_connection():
         request = RunReportRequest(
             property=PROPERTY_ID,
             date_ranges=[DateRange(start_date=START_DATE, end_date=END_DATE)],
-            metrics=[Metric(name="activeUsers")],
-            dimensions=[Dimension(name="deviceCategory")]
+            metrics=[Metric(name="activeUsers")]
         )
         response = client.run_report(request)
         
         if not response.rows:
             logger.error("API GA4 вернул пустой результат. Нет данных для указанного периода.")
-            return False
+            raise ValueError("API GA4 вернул пустой результат")
         
         logger.info(f"Соединение с GA4 успешно установлено.")
         return True
     except Exception as e:
         logger.error(f"Ошибка при подключении к GA4: {e}")
         logger.error(traceback.format_exc())
-        return False
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 def fetch_device_metrics():
     """Получение метрик по устройствам из GA4."""
@@ -554,26 +553,31 @@ with DAG(
     test_connection = PythonOperator(
         task_id='test_ga4_connection',
         python_callable=test_ga4_connection,
+        trigger_rule='all_success',
     )
     
     create_db_tables = PythonOperator(
         task_id='create_db_tables',
         python_callable=create_tables,
+        trigger_rule='all_success',
     )
     
     load_device_metrics = PythonOperator(
         task_id='load_device_metrics',
         python_callable=load_device_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_platform_metrics = PythonOperator(
         task_id='load_platform_metrics',
         python_callable=load_platform_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_screen_resolution_metrics = PythonOperator(
         task_id='load_screen_resolution_metrics',
         python_callable=load_screen_resolution_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     # Определение порядка выполнения задач

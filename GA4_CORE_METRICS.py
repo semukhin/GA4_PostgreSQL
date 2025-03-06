@@ -135,14 +135,14 @@ def test_ga4_connection():
         
         if not response.rows:
             logger.error("API GA4 вернул пустой результат. Нет данных для указанного периода.")
-            return False
+            raise ValueError("API GA4 вернул пустой результат")
         
-        logger.info(f"Соединение с GA4 успешно установлено. Найдено {response.rows[0].metric_values[0].value} активных пользователей.")
+        logger.info(f"Соединение с GA4 успешно установлено.")
         return True
     except Exception as e:
         logger.error(f"Ошибка при подключении к GA4: {e}")
         logger.error(traceback.format_exc())
-        return False
+        raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 def fetch_user_metrics():
     """Получение метрик пользователей из GA4."""
@@ -543,26 +543,31 @@ with DAG(
     test_connection = PythonOperator(
         task_id='test_ga4_connection',
         python_callable=test_ga4_connection,
+        trigger_rule='all_success',
     )
     
     create_db_tables = PythonOperator(
         task_id='create_db_tables',
         python_callable=create_tables,
+        trigger_rule='all_success',
     )
     
     load_user_metrics = PythonOperator(
         task_id='load_user_metrics',
         python_callable=load_user_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_session_metrics = PythonOperator(
         task_id='load_session_metrics',
         python_callable=load_session_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     load_pageview_metrics = PythonOperator(
         task_id='load_pageview_metrics',
         python_callable=load_pageview_metrics_to_db,
+        trigger_rule='all_success',
     )
     
     # Определение порядка выполнения задач
