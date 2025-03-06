@@ -31,13 +31,13 @@ START_DATE = "2024-09-01"
 END_DATE = datetime.today().strftime("%Y-%m-%d")
 
 def create_tables():
-    """Создание необходимых таблиц в схеме analytics."""
+    """Создание необходимых таблиц в схеме staging."""
     queries = [
         """
-        CREATE SCHEMA IF NOT EXISTS analytics;
+        CREATE SCHEMA IF NOT EXISTS staging;
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_channel_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_channel_metrics (
             report_date DATE,
             default_channel_group TEXT,
             user_type TEXT,  -- new, returning, (not set)
@@ -53,7 +53,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_source_medium_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_source_medium_metrics (
             report_date DATE,
             source TEXT,
             medium TEXT,
@@ -70,7 +70,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_campaign_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_campaign_metrics (
             report_date DATE,
             campaign_name TEXT,
             source TEXT,
@@ -414,7 +414,7 @@ def load_channel_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_channel_metrics (
+        INSERT INTO staging.ga4_channel_metrics (
             report_date, 
             default_channel_group, 
             user_type, 
@@ -468,7 +468,7 @@ def load_source_medium_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_source_medium_metrics (
+        INSERT INTO staging.ga4_source_medium_metrics (
             report_date, 
             source, 
             medium, 
@@ -529,7 +529,7 @@ def load_campaign_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_campaign_metrics (
+        INSERT INTO staging.ga4_campaign_metrics (
             report_date, 
             campaign_name, 
             source, 
@@ -576,7 +576,7 @@ def load_campaign_metrics_to_db():
 
 # Определение DAG
 default_args = {
-    'owner': 'airflow',
+    'owner': 'semukhin',
     'depends_on_past': False,
     'email_on_failure': True,
     'email_on_retry': False,

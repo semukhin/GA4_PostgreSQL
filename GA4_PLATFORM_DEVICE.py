@@ -31,13 +31,13 @@ START_DATE = "2024-09-01"
 END_DATE = datetime.today().strftime("%Y-%m-%d")
 
 def create_tables():
-    """Создание необходимых таблиц в схеме analytics."""
+    """Создание необходимых таблиц в схеме staging."""
     queries = [
         """
-        CREATE SCHEMA IF NOT EXISTS analytics;
+        CREATE SCHEMA IF NOT EXISTS staging;
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_device_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_device_metrics (
             report_date DATE,
             device_category TEXT,
             browser TEXT,
@@ -53,7 +53,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_platform_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_platform_metrics (
             report_date DATE,
             platform TEXT,
             app_version TEXT,
@@ -69,7 +69,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_screen_resolution_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_screen_resolution_metrics (
             report_date DATE,
             screen_resolution TEXT,
             device_category TEXT,
@@ -382,7 +382,7 @@ def load_device_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_device_metrics (
+        INSERT INTO staging.ga4_device_metrics (
             report_date, 
             device_category, 
             browser, 
@@ -441,7 +441,7 @@ def load_platform_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_platform_metrics (
+        INSERT INTO staging.ga4_platform_metrics (
             report_date, 
             platform, 
             app_version, 
@@ -494,7 +494,7 @@ def load_screen_resolution_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_screen_resolution_metrics (
+        INSERT INTO staging.ga4_screen_resolution_metrics (
             report_date, 
             screen_resolution, 
             device_category, 
@@ -532,7 +532,7 @@ def load_screen_resolution_metrics_to_db():
 
 # Определение DAG
 default_args = {
-    'owner': 'airflow',
+    'owner': 'semukhin',
     'depends_on_past': False,
     'email_on_failure': True,
     'email_on_retry': False,

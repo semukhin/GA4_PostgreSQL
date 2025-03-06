@@ -31,13 +31,13 @@ START_DATE = "2024-09-01"
 END_DATE = datetime.today().strftime("%Y-%m-%d")
 
 def create_tables():
-    """Создание необходимых таблиц в схеме analytics."""
+    """Создание необходимых таблиц в схеме staging."""
     queries = [
         """
-        CREATE SCHEMA IF NOT EXISTS analytics;
+        CREATE SCHEMA IF NOT EXISTS staging;
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_geo_country_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_geo_country_metrics (
             report_date DATE,
             country TEXT,
             country_id TEXT,
@@ -55,7 +55,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_geo_region_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_geo_region_metrics (
             report_date DATE,
             region TEXT,
             country TEXT,
@@ -72,7 +72,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_geo_city_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_geo_city_metrics (
             report_date DATE,
             city TEXT,
             city_id TEXT,
@@ -444,7 +444,7 @@ def load_country_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_geo_country_metrics (
+        INSERT INTO staging.ga4_geo_country_metrics (
             report_date, 
             country, 
             country_id, 
@@ -509,7 +509,7 @@ def load_region_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_geo_region_metrics (
+        INSERT INTO staging.ga4_geo_region_metrics (
             report_date, 
             region, 
             country, 
@@ -571,7 +571,7 @@ def load_city_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_geo_city_metrics (
+        INSERT INTO staging.ga4_geo_city_metrics (
             report_date, 
             city, 
             city_id, 
@@ -623,7 +623,7 @@ def load_city_metrics_to_db():
 
 # Определение DAG
 default_args = {
-    'owner': 'airflow',
+    'owner': 'semukhin',
     'depends_on_past': False,
     'email_on_failure': True,
     'email_on_retry': False,

@@ -53,13 +53,13 @@ def load_user_exclusions():
     return exclusions
 
 def create_tables():
-    """Создание необходимых таблиц в схеме analytics."""
+    """Создание необходимых таблиц в схеме staging."""
     queries = [
         """
-        CREATE SCHEMA IF NOT EXISTS analytics;
+        CREATE SCHEMA IF NOT EXISTS staging;
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_user_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_user_metrics (
             report_date DATE,
             user_type TEXT,  -- new, returning, (not set)
             active_users INT,
@@ -77,7 +77,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_session_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_session_metrics (
             report_date DATE,
             user_type TEXT,  -- new, returning, (not set)
             sessions INT,
@@ -91,7 +91,7 @@ def create_tables():
         );
         """,
         """
-        CREATE TABLE IF NOT EXISTS analytics.ga4_pageview_metrics (
+        CREATE TABLE IF NOT EXISTS staging.ga4_pageview_metrics (
             report_date DATE,
             user_type TEXT,  -- new, returning, (not set)
             screen_page_views INT,
@@ -382,7 +382,7 @@ def load_user_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_user_metrics (
+        INSERT INTO staging.ga4_user_metrics (
             report_date, 
             user_type, 
             active_users, 
@@ -441,7 +441,7 @@ def load_session_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_session_metrics (
+        INSERT INTO staging.ga4_session_metrics (
             report_date, 
             user_type, 
             sessions, 
@@ -492,7 +492,7 @@ def load_pageview_metrics_to_db():
         
         # Вставка данных с обработкой дубликатов
         query = """
-        INSERT INTO analytics.ga4_pageview_metrics (
+        INSERT INTO staging.ga4_pageview_metrics (
             report_date, 
             user_type, 
             screen_page_views, 
@@ -521,7 +521,7 @@ def load_pageview_metrics_to_db():
 
 # Определение DAG
 default_args = {
-    'owner': 'airflow',
+    'owner': 'semukhin',
     'depends_on_past': False,
     'email_on_failure': True,
     'email_on_retry': False,
