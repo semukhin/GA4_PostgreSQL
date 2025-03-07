@@ -1297,33 +1297,28 @@ with DAG(
     load_google_ads_metrics = PythonOperator(
         task_id='load_google_ads_metrics',
         python_callable=load_google_ads_metrics_to_db,
-        # Добавляем проверку результата выполнения
         trigger_rule='all_success',
     )
     
     load_conversion_metrics = PythonOperator(
         task_id='load_conversion_metrics',
         python_callable=load_conversion_metrics_to_db,
-        # Добавляем проверку результата выполнения
         trigger_rule='all_success',
     )
     
     load_campaign_budget_metrics = PythonOperator(
         task_id='load_campaign_budget_metrics',
         python_callable=load_campaign_budget_metrics_to_db,
-        # Добавляем проверку результата выполнения
         trigger_rule='all_success',
     )
     
     load_wow_metrics = PythonOperator(
         task_id='load_wow_metrics',
         python_callable=load_wow_metrics_to_db,
-        # Добавляем проверку результата выполнения
         trigger_rule='all_success',
     )
     
     # Определение порядка выполнения задач
     test_connection >> create_db_tables
-    create_db_tables >> wait_for_user_behavior
-    wait_for_user_behavior >> [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics]
+    create_db_tables >> [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics]
     [load_google_ads_metrics, load_conversion_metrics, load_campaign_budget_metrics] >> load_wow_metrics

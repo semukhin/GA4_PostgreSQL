@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime, timedelta
 import os
 import psycopg2
@@ -642,7 +643,18 @@ with DAG(
         python_callable=load_page_path_metrics_to_db,
         trigger_rule='all_success',
     )
+
+
+    trigger_advertising_dag = TriggerDagRunOperator(
+    task_id='trigger_advertising_dag',
+    trigger_dag_id='GA4_ADVERTISING_METRICS',
+    wait_for_completion=False,
+    reset_dag_run=True,
+    trigger_rule='all_success',
+    )
     
     # Определение порядка выполнения задач
     test_connection >> create_db_tables
     create_db_tables >> [load_event_metrics, load_key_event_metrics, load_page_path_metrics]
+    # Новая строка - все задачи должны быть выполнены перед запуском следующего DAG
+    [load_event_metrics, load_key_event_metrics, load_page_path_metrics] >> trigger_advertising_dag
