@@ -1,0 +1,51 @@
+graph TD
+    subgraph "Источники данных"
+        GA4[Google Analytics 4 API]
+        GCS[Google Cloud Storage]
+    end
+
+    subgraph "Оркестрация"
+        A[GA4_CORE_METRICS]
+        B[GA4_USER_BEHAVIOR]
+        C[GA4_ACQUISITION]
+        D[GA4_GEOGRAPHIC]
+        E[GA4_PLATFORM_DEVICE]
+        F[GA4_ADVERTISING_METRICS]
+        G[GA4_PPC_METRICS]
+    end
+
+    subgraph "Хранилище данных"
+        DB[(PostgreSQL Database)]
+        Staging[Staging Schema]
+        Analytics[Analytics Schema]
+    end
+
+    subgraph "Визуализация"
+        Dashboard[Аналитические дашборды]
+    end
+
+    GA4 --> A
+    GA4 --> B
+    GA4 --> C
+    GA4 --> D
+    GA4 --> E
+    GA4 --> F
+
+    A --> DB
+    B --> DB
+    C --> DB
+    D --> DB
+    E --> DB
+    F --> DB
+
+    F --> G
+    B --> G
+    G --> DB
+
+    DB --> Dashboard
+    
+    %% Зависимости между DAG-ами
+    A -.-> |Предварительные данные| B
+    B -.-> |wait_for_user_behavior| F
+    F -.-> |wait_for_ads_data| G
+    B -.-> |wait_for_user_behavior_data| G

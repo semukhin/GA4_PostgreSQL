@@ -75,10 +75,10 @@ def create_tables():
             report_date DATE,
             page_path TEXT,
             page_title TEXT,
+            landing_page_plus_query_string TEXT,
             screen_page_views INT,
             average_engagement_time FLOAT,
             bounce_rate FLOAT,
-            entrances INT,
             exit_rate FLOAT,
             exits INT,
             PRIMARY KEY (report_date, page_path)
@@ -276,25 +276,24 @@ def fetch_key_event_metrics():
         logger.error(f"Ошибка при получении метрик ключевых событий: {e}")
         logger.error(traceback.format_exc())
         return []
+    
 
 def fetch_page_path_metrics():
     """Получение метрик по путям страниц из GA4."""
     logger.info(f"Получение метрик по путям страниц за период {START_DATE} - {END_DATE}")
     
-    # Измерения
+    # Измерения - с landingPagePlusQueryString
     dimensions = [
         "pagePath",
-        "pageTitle"
+        "pageTitle",
+        "landingPagePlusQueryString"
     ]
     
-    # Метрики страниц
+    # Метрики - только гарантированно работающие
     metrics = [
         "screenPageViews",
         "userEngagementDuration",  # Используется для расчета average_engagement_time
-        "bounceRate",
-        "entrances",
-        "exitRate",
-        "exits"
+        "bounceRate"
     ]
     
     try:
@@ -322,30 +321,32 @@ def fetch_page_path_metrics():
             for row in response.rows:
                 page_path = row.dimension_values[0].value
                 page_title = row.dimension_values[1].value
+                landing_page_plus_query_string = row.dimension_values[2].value
                 
                 # Метрики
                 screen_page_views = int(row.metric_values[0].value or 0)
                 user_engagement_duration = int(row.metric_values[1].value or 0)
                 bounce_rate = float(row.metric_values[2].value or 0.0)
-                entrances = int(row.metric_values[3].value or 0)
-                exit_rate = float(row.metric_values[4].value or 0.0)
-                exits = int(row.metric_values[5].value or 0)
                 
                 # Расчет среднего времени вовлеченности
                 average_engagement_time = 0.0
                 if screen_page_views > 0:
                     average_engagement_time = user_engagement_duration / screen_page_views
                 
+                # Заглушки для полей, которые невозможно получить из API
+                exit_rate = 0.0  # Заглушка для exit_rate
+                exits = 0  # Заглушка для exits
+                
                 results.append((
                     date_str,
                     page_path,
                     page_title,
+                    landing_page_plus_query_string,
                     screen_page_views,
                     average_engagement_time,
                     bounce_rate,
-                    entrances,
-                    exit_rate,
-                    exits
+                    exit_rate,  # Заглушка
+                    exits  # Заглушка
                 ))
             
             current_date += timedelta(days=1)
@@ -357,12 +358,77 @@ def fetch_page_path_metrics():
         logger.error(traceback.format_exc())
         return []
 
+def load_page_path_metrics_to_db():
+    """Загрузка метрик по путям страниц в базу данных."""
+    metrics = fetch_page_path_metrics()
+    if not metrics:
+        logger.warning("Нет данных для загрузки в таблицу page_path_metrics")
+        return
+    
+    # Загрузка данных в БД
+    conn = None
+    cursor = None
+    try:
+        conn = psycopg2.connect(**POSTGRES_CONFIG)
+        cursor = conn.cursor()
+        
+        # Вставка данных с обработкой дубликатов - обновляем SQL с новыми полями
+        query = """
+            INSERT INTO staging.ga4_page_path_metrics (
+            report_date, 
+            page_path, 
+            page_title,
+            landing_page_plus_query_string,
+            screen_page_views, 
+            average_engagement_time, 
+            bounce_rate,
+            exit_rate,
+            exits
+        ) VALUES %s
+        ON CONFLICT (report_date, page_path) DO UPDATE SET
+            page_title = EXCLUDED.page_title,
+            landing_page_plus_query_string = EXCLUDED.landing_page_plus_query_string,
+            screen_page_views = EXCLUDED.screen_page_views,
+            average_engagement_time = EXCLUDED.average_engagement_time,
+            bounce_rate = EXCLUDED.bounce_rate,
+            exit_rate = EXCLUDED.exit_rate,
+            exits = EXCLUDED.exits;
+        """
+        
+        psycopg2.extras.execute_values(cursor, query, metrics)
+        conn.commit()
+        logger.info(f"Загружено {len(metrics)} записей метрик по путям страниц")
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Ошибка при загрузке метрик по путям страниц: {e}")
+        logger.error(traceback.format_exc())
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+    
+
 def load_event_metrics_to_db():
     """Загрузка метрик событий в базу данных."""
     metrics = fetch_event_metrics()
     if not metrics:
         logger.warning("Нет данных для загрузки в таблицу event_metrics")
         return
+    
+    # Устранение дубликатов перед загрузкой
+    unique_metrics = {}
+    for metric in metrics:
+        # Используем первые три поля (report_date, event_name, user_type) как ключ
+        key = (metric[0], metric[1], metric[2])
+        # Сохраняем только последнюю запись для каждого ключа
+        unique_metrics[key] = metric
+    
+    # Преобразуем обратно в список
+    deduplicated_metrics = list(unique_metrics.values())
+    
+    logger.info(f"После удаления дубликатов осталось {len(deduplicated_metrics)} из {len(metrics)} записей")
     
     # Загрузка данных в БД
     conn = None
@@ -389,9 +455,9 @@ def load_event_metrics_to_db():
             is_key_event = EXCLUDED.is_key_event;
         """
         
-        psycopg2.extras.execute_values(cursor, query, metrics)
+        psycopg2.extras.execute_values(cursor, query, deduplicated_metrics)
         conn.commit()
-        logger.info(f"Загружено {len(metrics)} записей метрик событий")
+        logger.info(f"Загружено {len(deduplicated_metrics)} записей метрик событий")
     except Exception as e:
         if conn:
             conn.rollback()
@@ -409,6 +475,19 @@ def load_key_event_metrics_to_db():
     if not metrics:
         logger.warning("Нет данных для загрузки в таблицу key_event_metrics")
         return
+    
+    # Устранение дубликатов перед загрузкой
+    unique_metrics = {}
+    for metric in metrics:
+        # Используем первые три поля (report_date, key_event_name, user_type) как ключ
+        key = (metric[0], metric[1], metric[2])
+        # Сохраняем только последнюю запись для каждого ключа
+        unique_metrics[key] = metric
+    
+    # Преобразуем обратно в список
+    deduplicated_metrics = list(unique_metrics.values())
+    
+    logger.info(f"После удаления дубликатов осталось {len(deduplicated_metrics)} из {len(metrics)} записей")
     
     # Загрузка данных в БД
     conn = None
@@ -435,9 +514,9 @@ def load_key_event_metrics_to_db():
             session_key_event_rate = EXCLUDED.session_key_event_rate;
         """
         
-        psycopg2.extras.execute_values(cursor, query, metrics)
+        psycopg2.extras.execute_values(cursor, query, deduplicated_metrics)
         conn.commit()
-        logger.info(f"Загружено {len(metrics)} записей метрик ключевых событий")
+        logger.info(f"Загружено {len(deduplicated_metrics)} записей метрик ключевых событий")
     except Exception as e:
         if conn:
             conn.rollback()
@@ -456,6 +535,19 @@ def load_page_path_metrics_to_db():
         logger.warning("Нет данных для загрузки в таблицу page_path_metrics")
         return
     
+    # Устранение дубликатов перед загрузкой
+    unique_metrics = {}
+    for metric in metrics:
+        # Используем первые два поля (report_date, page_path) как ключ
+        key = (metric[0], metric[1])
+        # Сохраняем только последнюю запись для каждого ключа
+        unique_metrics[key] = metric
+    
+    # Преобразуем обратно в список
+    deduplicated_metrics = list(unique_metrics.values())
+    
+    logger.info(f"После удаления дубликатов осталось {len(deduplicated_metrics)} из {len(metrics)} записей")
+    
     # Загрузка данных в БД
     conn = None
     cursor = None
@@ -468,27 +560,27 @@ def load_page_path_metrics_to_db():
             INSERT INTO staging.ga4_page_path_metrics (
             report_date, 
             page_path, 
-            page_title, 
+            page_title,
+            landing_page_plus_query_string,
             screen_page_views, 
             average_engagement_time, 
             bounce_rate,
-            entrances,
             exit_rate,
             exits
         ) VALUES %s
         ON CONFLICT (report_date, page_path) DO UPDATE SET
             page_title = EXCLUDED.page_title,
+            landing_page_plus_query_string = EXCLUDED.landing_page_plus_query_string,
             screen_page_views = EXCLUDED.screen_page_views,
             average_engagement_time = EXCLUDED.average_engagement_time,
             bounce_rate = EXCLUDED.bounce_rate,
-            entrances = EXCLUDED.entrances,
             exit_rate = EXCLUDED.exit_rate,
             exits = EXCLUDED.exits;
         """
         
-        psycopg2.extras.execute_values(cursor, query, metrics)
+        psycopg2.extras.execute_values(cursor, query, deduplicated_metrics)
         conn.commit()
-        logger.info(f"Загружено {len(metrics)} записей метрик по путям страниц")
+        logger.info(f"Загружено {len(deduplicated_metrics)} записей метрик по путям страниц")
     except Exception as e:
         if conn:
             conn.rollback()
