@@ -332,8 +332,7 @@ def process_response(response, results, network_type_filter="all"):
             ctr,
             cpc,
             conversions,
-            cost_per_conversion,
-            network_type_filter  # Добавляем информацию о типе сети
+            cost_per_conversion
         ))
 
 def fetch_conversion_metrics():
@@ -910,8 +909,8 @@ def load_campaign_budget_metrics_to_db():
     try:
         metrics = fetch_campaign_budget_metrics()
         if not metrics:
-            logger.error("Получение метрик бюджетов кампаний вернуло пустой результат")
-            raise ValueError("Нет данных для загрузки в таблицу campaign_budget_metrics")
+            logger.warning("Получение метрик бюджетов кампаний вернуло пустой результат")
+            return True
         
         # Загрузка данных в БД
         conn = None
@@ -1273,27 +1272,16 @@ with DAG(
     test_connection = PythonOperator(
         task_id='test_ga4_connection',
         python_callable=test_ga4_connection,
-        # Добавляем этот параметр, чтобы Python функция вызывала исключения
         trigger_rule='all_success',
     )
     
     create_db_tables = PythonOperator(
         task_id='create_db_tables',
         python_callable=create_tables,
-        # Добавляем проверку результата выполнения
         trigger_rule='all_success',
     )
 
-    wait_for_user_behavior = ExternalTaskSensor(
-        task_id='wait_for_user_behavior',
-        external_dag_id='GA4_USER_BEHAVIOR',
-        external_task_id='load_key_event_metrics',
-        allowed_states=['success'],
-        timeout=3600,
-        poke_interval=60,
-        mode='reschedule'
-    )
-    
+      
     load_google_ads_metrics = PythonOperator(
         task_id='load_google_ads_metrics',
         python_callable=load_google_ads_metrics_to_db,
