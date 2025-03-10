@@ -651,10 +651,9 @@ with DAG(
     wait_for_completion=False,
     reset_dag_run=True,
     trigger_rule='all_success',
-    )
-    
-    # Определение порядка выполнения задач
+)
+
+    # Порядок выполнения задач
     test_connection >> create_db_tables
     create_db_tables >> [load_event_metrics, load_key_event_metrics, load_page_path_metrics]
-    # Новая строка - все задачи должны быть выполнены перед запуском следующего DAG
     [load_event_metrics, load_key_event_metrics, load_page_path_metrics] >> trigger_advertising_dag

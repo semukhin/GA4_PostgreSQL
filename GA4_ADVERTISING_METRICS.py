@@ -3,7 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.email import EmailOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.operators.python import BranchPythonOperator
-from airflow.operators.dummy import DummyOperator
+from airflow.operators.empty import EmptyOperator
 from airflow.models import Variable
 import json
 import requests
@@ -284,6 +284,7 @@ def fetch_google_ads_metrics():
         raise  # Перебрасываем исключение вверх
 
 
+# 1. Исправление функции process_response (удаление network_type_filter из результата)
 def process_response(response, results, network_type_filter="all"):
     """Обработка ответа от API GA4 и добавление результатов в список."""
     for row in response.rows:
@@ -319,6 +320,7 @@ def process_response(response, results, network_type_filter="all"):
         if conversions > 0:
             cost_per_conversion = cost / conversions
         
+        # Убираем network_type_filter из кортежа
         results.append((
             date_formatted,
             campaign_name,
@@ -762,6 +764,7 @@ def calculate_wow_metrics():
         if conn:
             conn.close()
 
+# 2. Исправление функции load_google_ads_metrics_to_db для обработки дублирующихся строк
 def load_google_ads_metrics_to_db():
     """Загрузка метрик Google Ads в базу данных."""
     try:
@@ -769,6 +772,19 @@ def load_google_ads_metrics_to_db():
         if not metrics:
             logger.error("Получение метрик Google Ads вернуло пустой результат")
             raise ValueError("Нет данных для загрузки в таблицу google_ads_metrics")
+        
+        # Устранение дубликатов перед загрузкой
+        unique_metrics = {}
+        for metric in metrics:
+            # Используем первые пять полей (date, campaign, ad_group, network_type) как ключ
+            key = (metric[0], metric[1], metric[2], metric[5])  # date, campaign_name, ad_group, network_type
+            # Сохраняем только последнюю запись для каждого ключа
+            unique_metrics[key] = metric
+        
+        # Преобразуем обратно в список
+        deduplicated_metrics = list(unique_metrics.values())
+        
+        logger.info(f"После удаления дубликатов осталось {len(deduplicated_metrics)} из {len(metrics)} записей")
         
         # Загрузка данных в БД
         conn = None
@@ -809,12 +825,12 @@ def load_google_ads_metrics_to_db():
             # Разбиваем на пакеты по 1000 записей
             batch_size = 1000
             rows_loaded = 0
-            for i in range(0, len(metrics), batch_size):
-                batch = metrics[i:i+batch_size]
+            for i in range(0, len(deduplicated_metrics), batch_size):
+                batch = deduplicated_metrics[i:i+batch_size]
                 psycopg2.extras.execute_values(cursor, query, batch)
                 conn.commit()
                 rows_loaded += len(batch)
-                logger.info(f"Загружена партия {i//batch_size + 1} из {(len(metrics)-1)//batch_size + 1}, размер: {len(batch)}")
+                logger.info(f"Загружена партия {i//batch_size + 1} из {(len(deduplicated_metrics)-1)//batch_size + 1}, размер: {len(batch)}")
                 
             logger.info(f"Загружено {rows_loaded} записей метрик Google Ads")
             return True
@@ -1019,6 +1035,7 @@ def load_wow_metrics_to_db():
         raise  # Перебрасываем исключение, чтобы задача завершилась с ошибкой
 
 
+# 3. Исправление функции calculate_conversion_metrics 
 def calculate_conversion_metrics():
     """Расчет метрик конверсии на основе данных о кампаниях и ключевых событиях."""
     conn = None
@@ -1074,11 +1091,12 @@ def calculate_conversion_metrics():
             }
         
         # Запрос для сбора данных о регистрациях (platform_signup)
+        # Исправлено: убедитесь, что колонки в таблице ga4_key_event_metrics точно соответствуют запросу
         cursor.execute("""
         SELECT 
             report_date, 
-            campaign_name, 
-            network_type,
+            key_event_name,  
+            user_type,
             SUM(event_count) as registrations
         FROM 
             staging.ga4_key_event_metrics
@@ -1086,8 +1104,9 @@ def calculate_conversion_metrics():
             key_event_name = 'platform_signup' AND
             report_date BETWEEN %s AND %s
         GROUP BY
-            report_date, campaign_name, network_type
+            report_date, key_event_name, user_type
         """, (START_DATE, END_DATE))
+        
         
         for row in cursor.fetchall():
             key = (row[0], row[1], row[2])  # date, campaign, network_type
@@ -1243,9 +1262,6 @@ def load_conversion_metrics_to_db():
             cursor.close()
         if conn:
             conn.close()
-
-
-
 
 
 # Определение DAG
